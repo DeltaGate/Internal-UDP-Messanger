@@ -22,7 +22,7 @@
 int main(){
 
     int versionCheck = 0;
-    char type[7];
+    char type[32];
     char ipAddress[20];
 
 
@@ -39,7 +39,7 @@ int main(){
 
 
     ZeroMemory(&hints, sizeof(hints)); // ZeroMemory is a macro that fills a block of memory with zeros, so each varible in the structure is set to 0, this is important as it prevents garbage values from being used in the struct.
-    hints.ai_family     = AF_UNSPEC; // defines if connection accepts IPv4 or IPv6 - I chose unspec so it can be either
+    hints.ai_family     = AF_INET; // defines if connection accepts IPv4 or IPv6 - I chose INET so it can only be v4
     hints.ai_socktype   = SOCK_DGRAM; // Telling it to use UDP socket
     hints.ai_protocol   = IPPROTO_UDP; // Telling it to use UDP protocol
 
@@ -53,7 +53,10 @@ int main(){
 
 
     printf("please enter client or server to choose connection type: ");
-    scanf("%s", type);
+    if (fgets(type, sizeof(type), stdin) != NULL) {
+    type[strcspn(type, "\n")] = '\0';
+    } 
+
     printf("you've chosen %s\n", type);
 
     versionCheck = (strcmp(type, "client") == 0) ? 0 : 1;
@@ -67,11 +70,8 @@ int main(){
 
 
     if (versionCheck == 1){
-        printf("Enter the IP address you wish to connect to: ");
-        scanf("%s", ipAddress);
-    // request address info from user using default port assgined above
 
-        iResult = getaddrinfo(ipAddress, DEFAULT_PORT, &hints, &result);
+        iResult = getaddrinfo(NULL, DEFAULT_PORT, &hints, &result);
         if (iResult !=0){
             printf("getaddrinfo failed: %d\n", iResult);
             WSACleanup();
@@ -93,23 +93,6 @@ int main(){
         WSACleanup();
         return 1;
         }
-
-
-
-        // Allow address reuse - temp code whilst testing on a single device, will remove once switched to server-client model.
-        BOOL reuse = TRUE;
-
-        if (setsockopt(
-                ConnectSocket,
-                SOL_SOCKET,
-                SO_REUSEADDR,
-                (const char *)&reuse,
-                sizeof(reuse)) == SOCKET_ERROR) {
-            printf("setsockopt failed: %d\n", WSAGetLastError());
-            closesocket(ConnectSocket);
-            return 1;
-        }
-
 
 
         // Binding to socket
@@ -134,7 +117,7 @@ int main(){
         uintptr_t recieveThreadServer = _beginthreadex(
         NULL,               // Default security attributes
         0,                  // Default stack size
-        recieveMessage,    // Function the thread runs
+        recieveMessageServer,    // Function the thread runs
         &args,     // Argument passed to the function
         0,                  // Start immediately
         NULL                // Thread ID not needed yet
@@ -148,14 +131,18 @@ int main(){
         };
 
         while(1){
-            // setting varibles for sending ping packet
-            char sendBuffer[4];
-            scanf("%s", sendBuffer);
-            int bufferLength = 4;
+            // setting varibles for sending packet
+            char sendBuffer[1024];
+            Sleep(5);
+            printf("Send Message: ");
+            fflush(stdin);
+            if (fgets(sendBuffer, sizeof(sendBuffer), stdin) != NULL) {
+                sendBuffer[strcspn(sendBuffer, "\n")] = '\0';
+            }
 
 
             // send a 4 letter packet via UDP through assgined socket
-            iResult = sendto(ConnectSocket, sendBuffer, bufferLength, 0, (struct sockaddr *)&clientAddr, sizeof(clientAddr));
+            iResult = sendto(ConnectSocket, sendBuffer, (int)sizeof(sendBuffer) - 1, 0, (struct sockaddr *)&clientAddr, sizeof(clientAddr));
             if(iResult == SOCKET_ERROR){
                 printf("Packet Sending Failure %d\n", WSAGetLastError());
                 freeaddrinfo(result);
@@ -182,7 +169,10 @@ int main(){
     
     else {
             printf("Enter the IP address you wish to connect to: ");
-            scanf("%s", ipAddress);
+            if (fgets(ipAddress, sizeof(ipAddress), stdin) != NULL) {
+                ipAddress[strcspn(ipAddress, "\n")] = '\0';
+            } 
+
             // request address info from user using default port assgined above
 
             iResult = getaddrinfo(ipAddress, DEFAULT_PORT, &hints, &result);
@@ -209,21 +199,16 @@ int main(){
             }
 
 
+            char sendBuffer[1024] = "Client has joined the chat";
 
-            // Allow address reuse - temp code whilst testing on a single device, will remove once switched to server-client model.
-            BOOL reuse = TRUE;
-
-            if (setsockopt(
-                    ConnectSocket,
-                    SOL_SOCKET,
-                    SO_REUSEADDR,
-                    (const char *)&reuse,
-                    sizeof(reuse)) == SOCKET_ERROR) {
-                printf("setsockopt failed: %d\n", WSAGetLastError());
-                closesocket(ConnectSocket);
-                return 1;
-            }
-
+            iResult = sendto(ConnectSocket, sendBuffer, (int)sizeof(sendBuffer) - 1, 0, ptr->ai_addr, (int)ptr->ai_addrlen);
+                if(iResult == SOCKET_ERROR){
+                    printf("Packet Sending Failure %d\n", WSAGetLastError());
+                    freeaddrinfo(result);
+                    WSACleanup();
+                    return 1;
+                }
+            printf("sent inital opening msg\n");
 
             // run a thread that listens for incoming messages.
             uintptr_t recieveThread = _beginthreadex(
@@ -242,23 +227,14 @@ int main(){
             return 1;
             };
 
-            char sendBuffer[60] = "Client has joined the chat";
-            int bufferLength = 60;
-
-            iResult = sendto(ConnectSocket, sendBuffer, bufferLength, 0, ptr->ai_addr, (int)ptr->ai_addrlen);
-                if(iResult == SOCKET_ERROR){
-                    printf("Packet Sending Failure %d\n", WSAGetLastError());
-                    freeaddrinfo(result);
-                    WSACleanup();
-                    return 1;
-                }
 
             while(1){
-                // setting varibles for sending ping packet
-                scanf("%s", sendBuffer);
-
-                // send a 4 letter packet via UDP through assgined socket
-                iResult = sendto(ConnectSocket, sendBuffer, bufferLength, 0, ptr->ai_addr, (int)ptr->ai_addrlen);
+                // setting varibles for sending packet
+                Sleep(5);
+                printf("Send Message: ");
+                fgets(sendBuffer, sizeof(sendBuffer), stdin);
+                
+                iResult = sendto(ConnectSocket, sendBuffer, (int)sizeof(sendBuffer) - 1, 0, ptr->ai_addr, (int)ptr->ai_addrlen);
                 if(iResult == SOCKET_ERROR){
                     printf("Packet Sending Failure %d\n", WSAGetLastError());
                     freeaddrinfo(result);
@@ -288,13 +264,12 @@ unsigned __stdcall recieveMessage(void *arg){
     SOCKET ConnectSocket = *(SOCKET *)arg;
     int i = 0;
     do{
-        char recvBuffer[60];
-        int bufferLength = 60;
+        char recvBuffer[1024];
         struct sockaddr_in whoFrom;
         int senderAddrSize = sizeof (whoFrom);
 
     // Recieve a PING packet via UDP through assgined socket
-        iResult = recvfrom(ConnectSocket, recvBuffer, bufferLength, 0, (SOCKADDR *)&whoFrom, &senderAddrSize);
+        iResult = recvfrom(ConnectSocket, recvBuffer, (int)sizeof(recvBuffer) - 1, 0, (SOCKADDR *)&whoFrom, &senderAddrSize);
         if (iResult == SOCKET_ERROR) {
             printf("recvfrom failed: %ld\n", WSAGetLastError());
             closesocket(ConnectSocket);
@@ -321,12 +296,10 @@ unsigned __stdcall recieveMessage(void *arg){
 
 
 
-
-
 unsigned __stdcall recieveMessageServer(void *arg){
     // -----------------------------------------------------------------------------------------------------------------------------------
     // placed inside an 10 message loop - I will be editing this to create a listening thread that is always watching for new messages
-    printf("secondary thread now running");
+    printf("secondary thread now running\n");
 
     ReceiveThreadArgs *args = (ReceiveThreadArgs *)arg;
     SOCKET socket = *args->ConnectSocket;
@@ -335,11 +308,11 @@ unsigned __stdcall recieveMessageServer(void *arg){
 
     int i = 0;
     do{
-        char recvBuffer[60];
-        int bufferLength = 60;
+        char recvBuffer[1024];
+
 
     // Recieve a PING packet via UDP through assgined socket
-        iResult = recvfrom(socket, recvBuffer, bufferLength, 0, (struct sockaddr *)clientAddr, &clientAddrLen);
+        iResult = recvfrom(socket, recvBuffer, (int)sizeof(recvBuffer) - 1, 0, (struct sockaddr *)clientAddr, &clientAddrLen);
         if (iResult == SOCKET_ERROR) {
             printf("recvfrom failed: %ld\n", WSAGetLastError());
             closesocket(socket);
@@ -357,3 +330,8 @@ unsigned __stdcall recieveMessageServer(void *arg){
     printf("Process fully complete\n");
     return 0;
 }
+
+
+
+
+
